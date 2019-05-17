@@ -3,12 +3,12 @@
 XIFS=$IFS
 IFS=' '
 queues=( "$@" )
-if [ ${#queues[@]} -eq 0 ]; then
-	queues=( 'long-eth' )
-	# user=$(whoami)
-	# queues_str=$(bqueues -u $user | grep --invert QUEUE_NAME | awk '{print $1}')
-	# read -r -a queues <<< "$queues_str"
-fi
+# if [ ${#queues[@]} -eq 0 ]; then
+# 	queues=( 'long-eth' )
+# 	# user=$(whoami)
+# 	# queues_str=$(bqueues -u $user | grep --invert QUEUE_NAME | awk '{print $1}')
+# 	# read -r -a queues <<< "$queues_str"
+# fi
 IFS='\n'
 all_queue_stats=$(bqueues "$@")
 # echo $all_queue_stats
@@ -19,12 +19,13 @@ for queue in "${queues[@]}"; do
 	# echo "$queue"
 
 	queue_stats=$(echo "$all_queue_stats" | grep "$queue")
+	# echo $queue_stats
 	queue_num_running_jobs=$(echo "$queue_stats" | awk '{print $10}')
 	queue_num_pending_jobs=$(echo "$queue_stats" | awk '{print $9}')
 	queue_max_num_jobs=$(echo "$queue_stats" | awk '{print $4}')
 	user_max_num_jobs=$(echo "$queue_stats" | awk '{print $5}')
 	queue_num_jobs=$(echo "$queue_stats" | awk '{print $8}')
-	user_num_jobs=$(echo -n "$bjobs_output" | wc -l)
+	user_num_jobs=$(echo -n "$bjobs_output" | grep "$queue" | wc -l)
 
 	# echo $queue_num_running_jobs $queue_num_pending_jobs $queue_max_num_jobs $user_max_num_jobs $queue_num_jobs $user_num_jobs
 
