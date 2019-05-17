@@ -12,7 +12,7 @@ fi
 IFS='\n'
 all_queue_stats=$(bqueues "$@")
 # echo $all_queue_stats
-bjobs_output=$(bjobs -noheader)
+bjobs_output=$(2>&1 bjobs -noheader | grep --invert "No unfinished job found")
 
 for queue in "${queues[@]}"; do
 
@@ -24,18 +24,18 @@ for queue in "${queues[@]}"; do
 	queue_max_num_jobs=$(echo "$queue_stats" | awk '{print $4}')
 	user_max_num_jobs=$(echo "$queue_stats" | awk '{print $5}')
 	queue_num_jobs=$(echo "$queue_stats" | awk '{print $8}')
-	user_num_jobs=$(echo "$bjobs_output" | wc -l)
+	user_num_jobs=$(echo -n "$bjobs_output" | wc -l)
 
 	# echo $queue_num_running_jobs $queue_num_pending_jobs $queue_max_num_jobs $user_max_num_jobs $queue_num_jobs $user_num_jobs
 
-	overall_queue_usage=$(bc <<< "scale=2;$queue_num_running_jobs/$queue_max_num_jobs")
-	user_queue_usage=$(bc <<< "scale=2;$user_num_jobs/$user_max_num_jobs")
+	overall_queue_usage=$(bc <<< "scale=4;$queue_num_jobs/$queue_max_num_jobs")
+	user_queue_usage=$(bc <<< "scale=4;$user_num_jobs/$user_max_num_jobs")
 
 	# echo $overall_queue_usage $user_queue_usage
 
 	queue_usage=$(bc <<< "if ($user_queue_usage > $overall_queue_usage) $user_queue_usage else $overall_queue_usage")
 
-	printf '%s %1.2f\n' "$queue" "$queue_usage"
+	printf '%s %1.4f\n' "$queue" "$queue_usage"
 done
 
 IFS=$XIFS
