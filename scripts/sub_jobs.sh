@@ -9,25 +9,25 @@
 
 scripts_dir_name=scripts
 
-classifier_names=(PS PT PF)
+classifier_names=(PF)
 dataset_names=() # leave empty for population from file
-dataset_names_file_path=dataset_name_lists/tsc_2015_no_pigs_size_asc.txt
-queues=(long-eth ht-16 ht-20 sky-eth)
+dataset_names_file_path=dataset_name_lists/pf_problematic.txt
+queues=(sky-eth sky-ib)
 dynamic_queueing=true # set to true to find least busy queue for each job submission
 mem_in_mb=4000
 resample_seeds=() # leave empty for default 1-30 resamples
 max_num_pending_jobs=100
+verbosity=1
 sleep_time_on_pend=60
-estimate_train=true
-overwrite_results=false
-resamples_by_datasets=true # n = number of datasets, r = num resamples. true gives r array jobs with n elements, false gives n array jobs with r elements
+estimate_train=false
+overwrite_results=true
+resamples_by_datasets=false # n = number of datasets, r = num resamples. true gives r array jobs with n elements, false gives n array jobs with r elements
 language=python
-
 working_dir_path=$(pwd)
 datasets_dir_path="/gpfs/home/vte14wgu/datasets"
 results_dir_path="${working_dir_path}/results"
 script_file_path="${working_dir_path}/sktime/contrib/experiments.py"
-experiment_name=sktime_pf
+experiment_name=pf_v1
 log_dir_path="${working_dir_path}/logs"
 
 if [ ${#dataset_names[@]} -eq 0 ]; then
@@ -69,11 +69,14 @@ dataset_names=(${dataset_names[@]})
 resample_seeds=(${resample_seeds[@]})
 
 classifier_name=%s"
+
 if [ "$resamples_by_datasets" = 'true' ]; then
+	label=resample
 	job_template="$job_template
 dataset_name_index=\$((\$LSB_JOBINDEX-1))
 resample_seed_index=%s"	
 else
+	label=dataset
 	job_template="$job_template
 dataset_name_index=%s
 resample_seed_index=\$((\$LSB_JOBINDEX-1))"
@@ -107,7 +110,7 @@ else
 echo"
 fi
 
-job_template="$job_template $script_file_path $datasets_dir_path \$dataset_name \$classifier_name $experiment_results_dir_path \$resample_seed"
+job_template="$job_template $script_file_path $datasets_dir_path \$dataset_name \$classifier_name $experiment_results_dir_path \$resample_seed -v $verbosity"
 
 if [ "$estimate_train" = 'true' ]; then
 	job_template="$job_template --estimate_train"
@@ -121,10 +124,10 @@ job_template="$job_template
 
 run_log_dir_path=%s
 
-echo placeholder > \$run_log_dir_path/\$LSB_JOBINDEX.err
-echo placeholder > \$run_log_dir_path/\$LSB_JOBINDEX.out
-chmod 777 \$run_log_dir_path/\$LSB_JOBINDEX.err
-chmod 777 \$run_log_dir_path/\$LSB_JOBINDEX.out
+echo placeholder > \$run_log_dir_path/$label\$LSB_JOBINDEX.err
+echo placeholder > \$run_log_dir_path/$label\$LSB_JOBINDEX.out
+chmod 777 \$run_log_dir_path/$label\$LSB_JOBINDEX.err
+chmod 777 \$run_log_dir_path/$label\$LSB_JOBINDEX.out
 
 "
 
@@ -155,10 +158,8 @@ for classifier_name in "${classifier_names[@]}"; do
 		done
 
 		job_name="${dataset_names[$i]}"
-		label=dataset
 		if [ "$resamples_by_datasets" = 'true' ]; then
 			job_name="${resample_seeds[$i]}"
-			label=resample
 		fi
 
 		chmod 777 $experiment_log_dir_path
