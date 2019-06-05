@@ -11,14 +11,14 @@ scripts_dir_name=scripts
 
 classifier_names=(PF)
 dataset_names=() # leave empty for population from file
-dataset_names_file_path=dataset_name_lists/pf_problematic.txt
+dataset_names_file_path=dataset_name_lists/test.txt
 queues=(sky-eth sky-ib)
 dynamic_queueing=true # set to true to find least busy queue for each job submission
 mem_in_mb=4000
 resample_seeds=() # leave empty for default 1-30 resamples
 max_num_pending_jobs=100
 verbosity=1
-sleep_time_on_pend=60
+sleep_time_on_pend=60s
 estimate_train=false
 overwrite_results=true
 resamples_by_datasets=false # n = number of datasets, r = num resamples. true gives r array jobs with n elements, false gives n array jobs with r elements
@@ -27,7 +27,7 @@ working_dir_path=$(pwd)
 datasets_dir_path="/gpfs/home/vte14wgu/datasets"
 results_dir_path="${working_dir_path}/results"
 script_file_path="${working_dir_path}/sktime/contrib/experiments.py"
-experiment_name=pf_v1
+experiment_name=pf_v2
 log_dir_path="${working_dir_path}/logs"
 
 if [ ${#dataset_names[@]} -eq 0 ]; then
@@ -71,12 +71,10 @@ resample_seeds=(${resample_seeds[@]})
 classifier_name=%s"
 
 if [ "$resamples_by_datasets" = 'true' ]; then
-	label=resample
 	job_template="$job_template
 dataset_name_index=\$((\$LSB_JOBINDEX-1))
 resample_seed_index=%s"	
 else
-	label=dataset
 	job_template="$job_template
 dataset_name_index=%s
 resample_seed_index=\$((\$LSB_JOBINDEX-1))"
@@ -162,16 +160,26 @@ for classifier_name in "${classifier_names[@]}"; do
 			job_name="${resample_seeds[$i]}"
 		fi
 
+		mkdir -p $experiment_log_dir_path
 		chmod 777 $experiment_log_dir_path
-		mkdir -p $experiment_log_dir_path/$classifier_name
-		chmod 777 $experiment_log_dir_path/$classifier_name
-		run_log_dir_path=$experiment_log_dir_path/$classifier_name/$job_name
+
+		run_log_dir_path="$experiment_log_dir_path/$classifier_name"
+
+		mkdir -p $run_log_dir_path
+		chmod 777 $run_log_dir_path
+
+		if [ "$resamples_by_datasets" = 'true' ]; then
+			run_log_dir_path="$run_log_dir_path/$i"
+		else
+			run_log_dir_path="$run_log_dir_path/${dataset_names[$i]}"
+		fi
+
 		mkdir -p $run_log_dir_path
 		chmod 777 $run_log_dir_path
 
 		job=$(printf "$job_template" "$classifier_name" "$i" "$run_log_dir_path")
 	
-		bsub -q $queue -oo "$run_log_dir_path/$label%I.out" -eo "$run_log_dir_path/$label%I.err" -R \"rusage[mem=$mem_in_mb]\" -J "${experiment_name}_${classifier_name}_${job_name}[1-$job_array_size]" -M $mem_in_mb "$job" 
+		bsub -q $queue -oo "$run_log_dir_path/%I-1.out" -eo "$run_log_dir_path/%I-1.err" -R \"rusage[mem=$mem_in_mb]\" -J "${experiment_name}_${classifier_name}_${job_name}[1-$job_array_size]" -M $mem_in_mb "$job" 
 
 	done
 done
