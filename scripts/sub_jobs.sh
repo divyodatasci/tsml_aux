@@ -1,98 +1,62 @@
 #! /bin/bash
 
-# WARNING: not built for spaces in strings (i.e. file paths, string variables, etc). This will explode if you do that.
-
 # todo make java / python experiments class set 777 permissions
-# todo spaces support (low priority)
 # todo make java use same args are python script
-# todo comment up this script
 
-scripts_dir_name=scripts
+scripts_dir_name=scripts # folder where this script and siblings are located
+classifier_names=( CEE ) # list of classifier names to run experiments on
+dataset_names=() # list of dataset names to run experiments on; leave empty for population from file
+dataset_name_list_file_path="/gpfs/home/vte14wgu/dataset_name_lists/test.txt" # path to file containing list of dataset names
+queues=( sky-ib ) # list of queues to spread jobs over, set only 1 queue to submit all jobs to same queue
+dynamic_queueing=false # set to true to find least busy queue for each job submission, otherwise round-robin iterate over queues
+java_mem_in_mb=8000 # amount of memory for the jvm
+job_mem_in_mb=$((java_mem_in_mb + 256)) # amount of memory for the lsf job
+seed_ranges=( ) # list of seeds, e.g. ( "1-2" "4-5" ) for seeds 0, 1, 4, 5; leave empty for default 0-29
+max_num_pending_jobs=200 # max number of pending jobs before waiting
+verbosity=1 # verbosity; larger number == more printouts
+sleep_time_on_pend=60s # time to sleep when waiting on pending jobs
+estimate_train=true # whether to estimate train set; true or false
+overwrite_results=false # whether to overwrite existing results; true or false
+language=notjava # language of the script
+datasets_dir_path=/gpfs/home/vte14wgu/Univariate2018 # path to folder containing datasets
+results_dir_path=$(pwd)/results # path to results folder
+script_file_path=$(pwd)/jar.jar # path to jar file
+experiment_name=exp # experiment name to prepend job names
+log_dir_path=$(pwd)/logs # path to log folder
 
-classifier_names=(PF)
-dataset_names=() # leave empty for population from file
-dataset_names_file_path=dataset_name_lists/test.txt
-queues=(sky-eth sky-ib)
-dynamic_queueing=true # set to true to find least busy queue for each job submission
-mem_in_mb=4000
-resample_seeds=() # leave empty for default 1-30 resamples
-max_num_pending_jobs=100
-verbosity=1
-sleep_time_on_pend=60s
-estimate_train=false
-overwrite_results=true
-resamples_by_datasets=false # n = number of datasets, r = num resamples. true gives r array jobs with n elements, false gives n array jobs with r elements
-language=python
-working_dir_path=$(pwd)
-datasets_dir_path="/gpfs/home/vte14wgu/datasets"
-results_dir_path="${working_dir_path}/results"
-script_file_path="${working_dir_path}/sktime/contrib/experiments.py"
-experiment_name=pf_v2
-log_dir_path="${working_dir_path}/logs"
-
+# if dataset names are not predefined
 if [ ${#dataset_names[@]} -eq 0 ]; then
-	readarray -t dataset_names < $dataset_names_file_path
+	readarray -t dataset_names < $dataset_name_list_file_path # read the dataset names from file
 fi
 
-if [ ${#resample_seeds[@]} -eq 0 ]; then
-	resample_seeds=()
-	for((i=0;i<30;i++)); do
-		resample_seeds+=( $i )
-	done
+# # if seeds are not predefined
+# if [ ${#seed_ranges[@]} -eq 0 ]; then
+#     # populate with default 0 - 29
+# 	seed_ranges=("1-30")
+# fi
+# if seeds are not predefined
+if [ ${#seed_ranges[@]} -eq 0 ]; then
+    # populate with default 0 - 29 in steps of 1, i.e. run all datasets through seed 0, then all datasets through seed 1, etc...
+    for((i=1;i<=30;i++)); do
+		seed_ranges+=("$i-$i")
+    done
 fi
 
-num_jobs=${#dataset_names[@]}
-job_array_size=${#resample_seeds[@]}
-if [ "$resamples_by_datasets" = 'true' ]; then
-	num_jobs=${#resample_seeds[@]}
-	job_array_size=${#dataset_names[@]}
-fi
-
-mkdir -p $log_dir_path
-chmod 777 $log_dir_path
-mkdir -p $results_dir_path
-chmod 777 $results_dir_path
-experiment_log_dir_path="$log_dir_path/$experiment_name"
-mkdir -p $experiment_log_dir_path
-chmod 777 $experiment_log_dir_path
-experiment_results_dir_path="$results_dir_path/$experiment_name"
-mkdir -p $experiment_results_dir_path
-chmod 777 $experiment_results_dir_path
-
-XIFS=$IFS
-IFS=' '
-
+# build the job script
 job_template="
 #! /bin/bash
 
-dataset_names=(${dataset_names[@]})
-resample_seeds=(${resample_seeds[@]})
-
-classifier_name=%s"
-
-if [ "$resamples_by_datasets" = 'true' ]; then
-	job_template="$job_template
-dataset_name_index=\$((\$LSB_JOBINDEX-1))
-resample_seed_index=%s"	
-else
-	job_template="$job_template
-dataset_name_index=%s
-resample_seed_index=\$((\$LSB_JOBINDEX-1))"
-fi
-
-
-job_template="$job_template
-
-dataset_name=\${dataset_names[\$dataset_name_index]}
-resample_seed=\${resample_seeds[\$resample_seed_index]}
-
+classifier_name=\"%s\"
+dataset_name=\"%s\"
+log_seed=\"\$LSB_JOBINDEX\"
+seed=\"\$((\$log_seed - 1))\"
 "
 
 if [ "$language" = 'python' ]; then
 	# setup environment path to root project folder
 	job_template="$job_template
 
-export PYTHONPATH=$working_dir_path
+export PYTHONPATH=$(pwd)
 
 module add python/anaconda/2019.3/3.7
 
@@ -102,86 +66,83 @@ elif [ "$language" = 'java' ]; then
 
 module add java
 
-java -jar"
+java -Xms${java_mem_in_mb}M -Xmx${java_mem_in_mb}M -d64 -Dorg.slf4j.simpleLogger.deaultLogLevel=off -javaagent:/gpfs/home/vte14wgu/SizeOf.jar -jar"
 else
 	job_template="$job_template
 echo"
 fi
 
-job_template="$job_template $script_file_path $datasets_dir_path \$dataset_name \$classifier_name $experiment_results_dir_path \$resample_seed -v $verbosity"
+job_template="$job_template $script_file_path $datasets_dir_path \$classifier_name $results_dir_path \$dataset_name \$seed"
 
-if [ "$estimate_train" = 'true' ]; then
-	job_template="$job_template --estimate_train"
-fi
+# if estimating train set
+ if [ "$estimate_train" = 'true' ]; then
+ 	job_template="$job_template -t" # append arg
+ fi
 
+# if overwriting results
 if [ "$overwrite_results" = 'true' ]; then
-	job_template="$job_template --overwrite_results"
+    job_template="$job_template -o" # append arg
 fi
 
 job_template="$job_template
 
-run_log_dir_path=%s
-
-echo placeholder > \$run_log_dir_path/$label\$LSB_JOBINDEX.err
-echo placeholder > \$run_log_dir_path/$label\$LSB_JOBINDEX.out
-chmod 777 \$run_log_dir_path/$label\$LSB_JOBINDEX.err
-chmod 777 \$run_log_dir_path/$label\$LSB_JOBINDEX.out
-
+job_log_dir_path="%s"
+echo placeholder > \$job_log_dir_path/\$log_seed.err
+echo placeholder > \$job_log_dir_path/\$log_seed.out
+chmod 777 \$job_log_dir_path/\$log_seed.err
+chmod 777 \$job_log_dir_path/\$log_seed.out
 "
 
-count=0
-for classifier_name in "${classifier_names[@]}"; do
+waitForFreeQueueSpace() {
+    # if dynamic queueing
+    if [ "$dynamic_queueing" = 'true' ]; then
+        # set queue to most free queue
+        queue=$(bash $scripts_dir_name/find_shortest_queue.sh "${queues[@]}")
+    else
+        # otherwise round-robin iterate over queues
+        queue=${queues[0]}
+        queues=( "${queues[@]:1}" )
+        queues+=( $queue )
+    fi
+    # find number of pending jobs
+    num_pending_jobs=$(2>&1 bjobs | awk '{print $3, $4}' | grep "PEND ${queue}" | wc -l)
+    # while too many jobs pending
+    while [ "${num_pending_jobs}" -ge "${max_num_pending_jobs}" ]
+    do
+        # too many pending jobs, wait a bit and try after
+        echo $num_pending_jobs pending on $queue, more than $max_num_pending_jobs, will retry in $sleep_time_on_pend
+        sleep ${sleep_time_on_pend}
+        if [ "$dynamic_queueing" = 'true' ]; then
+            queue=$(bash $scripts_dir_name/find_shortest_queue.sh "${queues[@]}")
+        fi
+        # find number of pending jobs
+        num_pending_jobs=$(2>&1 bjobs | awk '{print $3, $4}' | grep "PEND ${queue}" | wc -l)
+    done
+}
 
-	for((i=0;i<$num_jobs;i++)); do
+# for each seed job
+for seed_range in "${seed_ranges[@]}"; do
+    # for each dataset job
+    for dataset_name in "${dataset_names[@]}"; do
+        # for each classifier
+        for classifier_name in "${classifier_names[@]}"; do
+            waitForFreeQueueSpace
 
-		if [ "$dynamic_queueing" = 'true' ]; then
-			queue=$(bash $scripts_dir_name/find_shortest_queue.sh "${queues[@]}")
-		else
-			queue=${queues[0]}
-			queues=( "${queues[@]:1}" )
-			queues+=( $queue )
-		fi
+            job_name="${experiment_name}_${classifier_name}_${dataset_name}_[$seed_range]"
 
-		num_pending_jobs=$(2>&1 bjobs | awk '{print $3, $4}' | grep "PEND ${queue}" | wc -l)
-		while [ "${num_pending_jobs}" -ge "${max_num_pending_jobs}" ]
-		do
-			if [ "${num_pending_jobs}" -ge "${max_num_pending_jobs}" ]; then
-				echo $num_pending_jobs pending on $queue, more than $max_num_pending_jobs, will retry in $sleep_time_on_pend
-				sleep ${sleep_time_on_pend}
-				if [ "$dynamic_queueing" = 'true' ]; then
-					queue=$(bash $scripts_dir_name/find_shortest_queue.sh "${queues[@]}")
-				fi
-			fi
-			num_pending_jobs=$(2>&1 bjobs | awk '{print $3, $4}' | grep "PEND ${queue}" | wc -l)
-		done
+			# make the log folder and set open permissions
+			mkdir -p $log_dir_path
+			chmod 777 $log_dir_path
+			job_log_dir_path=$log_dir_path/$dataset_name
+			# make the log folder and set open permissions
+			mkdir -p $job_log_dir_path
+			chmod 777 $job_log_dir_path
 
-		job_name="${dataset_names[$i]}"
-		if [ "$resamples_by_datasets" = 'true' ]; then
-			job_name="${resample_seeds[$i]}"
-		fi
+			job=$(printf "$job_template" "$classifier_name" "$dataset_name" "$job_log_dir_path")
 
-		mkdir -p $experiment_log_dir_path
-		chmod 777 $experiment_log_dir_path
+			bsub -q $queue -oo "$job_log_dir_path/%I.out" -eo "$job_log_dir_path/%I.err" -R "rusage[mem=$job_mem_in_mb]" -J "$job_name" -M "$job_mem_in_mb" "$job"
 
-		run_log_dir_path="$experiment_log_dir_path/$classifier_name"
-
-		mkdir -p $run_log_dir_path
-		chmod 777 $run_log_dir_path
-
-		if [ "$resamples_by_datasets" = 'true' ]; then
-			run_log_dir_path="$run_log_dir_path/$i"
-		else
-			run_log_dir_path="$run_log_dir_path/${dataset_names[$i]}"
-		fi
-
-		mkdir -p $run_log_dir_path
-		chmod 777 $run_log_dir_path
-
-		job=$(printf "$job_template" "$classifier_name" "$i" "$run_log_dir_path")
-	
-		bsub -q $queue -oo "$run_log_dir_path/%I-1.out" -eo "$run_log_dir_path/%I-1.err" -R \"rusage[mem=$mem_in_mb]\" -J "${experiment_name}_${classifier_name}_${job_name}[1-$job_array_size]" -M $mem_in_mb "$job" 
-
+        done
 	done
 done
 
-IFS=$XIFS
