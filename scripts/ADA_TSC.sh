@@ -45,7 +45,6 @@ echo "#!/bin/bash
 #SBATCH --job-name=${classifier}${dataset}
 #SBATCH --array=1-${max_folds}
 #SBATCH --mem=${max_memory}M
-#SBATCH --ntasks-per-node=24
 #SBATCH -o ${outDir}${classifier}/${dataset}/%A-%a.out
 #SBATCH -e ${outDir}${classifier}/${dataset}/%A-%a.err
 
