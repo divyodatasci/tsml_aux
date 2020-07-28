@@ -1,0 +1,7 @@
+stopping intellij doing a full build
+go file -> proj struct -> artifacts -> select your jar -> untick "include in project build"
+
+Allowing parallel build in intelij
+Run -> edit configurations. Tick allow parallel run
+
+
