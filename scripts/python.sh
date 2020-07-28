@@ -55,7 +55,7 @@ echo "#!/bin/csh
 #SBATCH -e ${outDir}${classifier}/${dataset}/%A-%a.err
 
 . /etc/profile
-python /gpfs/home/${username}/python/${pythonFile} ${dataDir} ${resultsDir} ${classifier} ${dataset} \$SLURM_ARRAY_TASK_ID ${checkpoint}"  > python.sub
+python /gpfs/home/${username}/${pythonFile} ${dataDir} ${resultsDir} ${classifier} ${dataset} \$SLURM_ARRAY_TASK_ID ${checkpoint}"  > python.sub
 
 echo sub file created
 echo ${count} ${classifier}/${dataset}
