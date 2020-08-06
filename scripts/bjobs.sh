@@ -1,0 +1,1 @@
+squeue -u ajb --format="%10i %15P %20j %10u %10t %10M %10D %20R"
