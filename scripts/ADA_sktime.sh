@@ -46,11 +46,10 @@ echo "#!/bin/bash
 #SBATCH -p ${queue}
 #SBATCH -t ${max_time}
 #SBATCH --job-name=${classifier}${dataset}
-#SBATCH --array=1-${max_folds}
+#SBATCH --array=${start_fold}-${max_folds}
 #SBATCH --mem=${max_memory}M
-#SBATCH --ntasks-per-node=1
-#SBATCH -o ${out_dir}${classifier}/${dataset}/%A-%a.out
-#SBATCH -e ${out_dir}${classifier}/${dataset}/%A-%a.err
+#SBATCH -o ${outDir}${classifier}/${dataset}/%A-%a.out
+#SBATCH -e ${outDir}${classifier}/${dataset}/%A-%a.err
 
 . /etc/profile
 
